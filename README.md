@@ -1,44 +1,43 @@
-# Drug Classification - CI/CD Pipeline for Machine Learning
+# Drug Classification - MLOps CI/CD Pipeline
 
 [![CI/CD Pipeline](https://github.com/bharani-01/Drug-Classification/actions/workflows/ci.yml/badge.svg)](https://github.com/bharani-01/Drug-Classification/actions)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
-[![Gradio](https://img.shields.io/badge/UI-Gradio-orange)](https://gradio.app/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
+[![ONNX Runtime Web](https://img.shields.io/badge/Inference-ONNX%20Web-005CED)](https://onnxruntime.ai/)
+[![Hugging Face Space](https://img.shields.io/badge/HuggingFace-Static%20Space-FFD21E)](https://huggingface.co/spaces/bharani-01/Drug-Classification)
 
-An automated MLOps pipeline for Drug Classification using Scikit-Learn, GitHub Actions for Continuous Integration (CI), CML (Continuous Machine Learning) for automated metric tracking, and Continuous Deployment (CD) to Hugging Face Spaces with a Gradio web application.
+An automated end-to-end MLOps pipeline for clinical drug classification. Models are trained using Scikit-Learn, exported to ONNX format, verified via GitHub Actions and Continuous Machine Learning (CML), and continuously deployed to a free **Hugging Face Static Space** with **ONNX Runtime WebAssembly** for zero-latency, serverless in-browser inference.
 
 ---
 
-## Representative Block Diagram for CI/CD Pipeline
+## Architecture Flow
 
 ```mermaid
 flowchart TD
-    %% Node Styling
-    classDef dev fill:#2563eb,stroke:#1d4ed8,stroke-width:2px,color:#fff;
-    classDef git fill:#059669,stroke:#047857,stroke-width:2px,color:#fff;
-    classDef ci fill:#d97706,stroke:#b45309,stroke-width:2px,color:#fff;
-    classDef eval fill:#7c3aed,stroke:#6d28d9,stroke-width:2px,color:#fff;
-    classDef cd fill:#db2777,stroke:#be185d,stroke-width:2px,color:#fff;
-    classDef prod fill:#0891b2,stroke:#0e7490,stroke-width:2px,color:#fff;
+    classDef dev fill:#1e293b,stroke:#38bdf8,stroke-width:2px,color:#fff;
+    classDef git fill:#0f172a,stroke:#34d399,stroke-width:2px,color:#fff;
+    classDef ci fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#fff;
+    classDef eval fill:#311042,stroke:#c084fc,stroke-width:2px,color:#fff;
+    classDef cd fill:#1e293b,stroke:#f472b6,stroke-width:2px,color:#fff;
+    classDef prod fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#fff;
 
-    subgraph S1["1. Code and Version Control"]
+    subgraph S1["1. Code & Version Control"]
         DEV["Developer"]:::dev -->|"git push"| GITHUB["GitHub Repository<br/>(bharani-01/Drug-Classification)"]:::git
     end
 
     subgraph S2["2. Continuous Integration (CI)"]
-        GITHUB -->|"Trigger Workflow"| GHA["GitHub Actions Runner"]:::ci
+        GITHUB -->|"Trigger Push / PR"| GHA["GitHub Actions Runner (Ubuntu)"]:::ci
         GHA --> DEPS["Install Dependencies<br/>(make install)"]:::ci
-        DEPS --> LINT["Format and Lint<br/>(make format)"]:::ci
-        LINT --> TRAIN["Train Model<br/>(make train)"]:::eval
-        TRAIN --> EVAL["Evaluate Metrics and Confusion Matrix<br/>(make eval)"]:::eval
-        EVAL --> CML["CML Bot<br/>(Comments report on PR or Commit)"]:::eval
-        EVAL --> UPDATE["Update Branch<br/>(make update-branch)"]:::git
+        DEPS --> LINT["Format Verification<br/>(make format: black --check)"]:::ci
+        LINT --> TRAIN["Train & Export Pipeline<br/>(make train: Scikit-Learn + skl2onnx)"]:::eval
+        TRAIN --> ARTIFACTS["Generate Model Artifacts<br/>(drug_model.joblib & drug_model.onnx)"]:::eval
+        ARTIFACTS --> EVAL["Evaluate Metrics & Matrix<br/>(make eval)"]:::eval
+        EVAL --> CML["CML Automated Report<br/>(Comments on PR or Commit)"]:::eval
     end
 
     subgraph S3["3. Continuous Deployment (CD)"]
-        UPDATE -->|"workflow_run triggered"| CD["CD Workflow (.github/workflows/cd.yml)"]:::cd
-        CD --> HF_LOGIN["Login to Hugging Face<br/>(make hf-login)"]:::cd
-        HF_LOGIN --> SYNC["Upload App, Model and Metrics<br/>(make push-hub)"]:::cd
-        SYNC --> HF["Hugging Face Spaces<br/>(Live Gradio Web Application)"]:::prod
+        CML -->|"Push to main"| HF_SYNC["Hugging Face CLI Hub Upload<br/>(app/, model/, results/)"]:::cd
+        HF_SYNC --> HF_SPACE["Hugging Face Static Space<br/>(bharani-01/Drug-Classification)"]:::prod
+        HF_SPACE --> CLIENT["Client Browser<br/>(ONNX Runtime WebAssembly Inference)"]:::prod
     end
 ```
 
@@ -50,70 +49,129 @@ flowchart TD
 Drug-Classification/
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml            # CI workflow: install, format, train, eval, cml, update-branch
-│       └── cd.yml            # CD workflow: automated deployment to Hugging Face Spaces
+│       ├── ci.yml            # Automated CI/CD: install, format, train, eval, CML report, HF deploy
+│       └── cd.yml            # Manual dispatch workflow for Hugging Face deployment
 ├── app/
-│   ├── app.py                # Gradio web application for inference
-│   ├── README.md             # Space configuration and metadata
-│   └── requirements.txt      # Gradio Space dependencies (scikit-learn, skops, gradio)
+│   ├── index.html            # Static single-page application with ONNX Runtime Web
+│   └── README.md             # Hugging Face Space metadata (sdk: static)
 ├── data/
-│   └── drug.csv              # Clinical dataset for drug classification (200 records)
+│   ├── drug.csv              # Clinical patient dataset (200 records)
+│   └── drug200.csv           # Dataset alias
 ├── model/
-│   └── drug_pipeline.skops   # Serialized model pipeline artifact
+│   ├── drug_model.joblib     # Python Scikit-Learn pipeline checkpoint
+│   └── drug_model.onnx       # Portable ONNX model for browser inference
 ├── results/
-│   ├── metrics.txt           # Generated model evaluation metrics (Accuracy, F1)
-│   └── model_results.png     # Generated confusion matrix plot
-├── Makefile                  # Build, formatting, training, and deployment commands
-├── requirements.txt          # Root Python dependencies for CI and local development
-├── train.py                  # Model training and evaluation script
-├── .gitignore                # Python ignore patterns
+│   ├── confusion_matrix.png  # Confusion matrix evaluation plot
+│   ├── metrics.txt           # Accuracy, F1-score, and classification report
+│   └── model_results.png     # Evaluation plot alias
+├── train.py                  # Training, evaluation, and ONNX export script
+├── requirements.txt          # Python dependencies for CI runner and training
+├── Makefile                  # Build and task automation targets
 └── README.md                 # Project documentation
 ```
 
 ---
 
-## How to Run Locally
+## Key Features
 
-### 1. Setup Virtual Environment
+1. **Serverless Browser Inference:**
+   - Inference runs completely in the client browser using WebAssembly (`onnxruntime-web`).
+   - No Python server or GPU instance needed on Hugging Face Spaces (runs on 100% free Static HTML Spaces).
+2. **Automated MLOps Pipeline:**
+   - Every push to `main` verifies Python code formatting with `black --check`.
+   - Automatically trains the Random Forest model and exports the ONNX graph with categorical encoders baked in.
+   - Generates confusion matrix and performance metrics.
+   - CML creates an evaluation summary directly in GitHub pull requests or commit comments.
+3. **Continuous Deployment:**
+   - Successfully validated models and static web files are synchronized directly to Hugging Face Spaces using the official `hf` CLI.
+
+---
+
+## Quickstart & Local Development
+
+### 1. Setup Environment
 ```bash
-# Windows
-py -3.12 -m venv venv
-.\venv\Scripts\activate
+python -m venv venv
+source venv/bin/activate       # On Linux/macOS
+# or: .\venv\Scripts\activate   # On Windows
 
-# Linux / macOS
-python3 -m venv venv
-source venv/bin/activate
+make install
 ```
 
-### 2. Install Dependencies
+### 2. Format & Lint
 ```bash
-pip install -r requirements.txt
+make format
 ```
 
-### 3. Train and Evaluate Model
+### 3. Train Model & Export ONNX
 ```bash
-python train.py
+make train
 ```
-Outputs:
-- Model artifact: `model/drug_pipeline.skops`
-- Evaluation metrics: `results/metrics.txt`
-- Confusion matrix image: `results/model_results.png`
+This produces:
+- `model/drug_model.joblib`
+- `model/drug_model.onnx`
+- `results/metrics.txt`
+- `results/confusion_matrix.png`
 
-### 4. Launch Gradio Web App
+### 4. Evaluate Performance
 ```bash
-pip install -r app/requirements.txt
-python app/app.py
+make eval
+```
+
+### 5. Local Web Preview
+To test the static web interface locally:
+```bash
+# Start a simple HTTP server from the repository root:
+python -m http.server 8000
+```
+Open [http://localhost:8000/app/index.html](http://localhost:8000/app/index.html) in your browser.
+
+---
+
+## GitHub Secrets Configuration
+
+To enable automated deployment to your Hugging Face Space, configure these repository secrets in **GitHub -> Settings -> Secrets and variables -> Actions**:
+
+| Secret Name | Description | Example |
+| :--- | :--- | :--- |
+| `HF_TOKEN` | Hugging Face access token with **Write** permissions | `hf_...` |
+| `HF_SPACE_ID` | Your Hugging Face Space identifier | `bharani-01/Drug-Classification` |
+
+---
+
+## Verification & Parity Test
+
+Validate that local Scikit-Learn predictions match the ONNX model predictions exactly:
+
+```python
+import joblib
+import numpy as np
+import onnxruntime as rt
+import pandas as pd
+
+sample = pd.DataFrame([{
+    "Age": 30, "Sex": "F", "BP": "NORMAL",
+    "Cholesterol": "NORMAL", "Na_to_K": 15.0,
+}])
+
+# 1. Scikit-Learn Pipeline
+model = joblib.load("model/drug_model.joblib")
+print("Scikit-Learn:", model.predict(sample)[0], model.predict_proba(sample)[0])
+
+# 2. ONNX Runtime
+sess = rt.InferenceSession("model/drug_model.onnx")
+feeds = {
+    "Age": np.array([[30]], dtype=np.int64),
+    "Sex": np.array([["F"]], dtype=object),
+    "BP": np.array([["NORMAL"]], dtype=object),
+    "Cholesterol": np.array([["NORMAL"]], dtype=object),
+    "Na_to_K": np.array([[15.0]], dtype=np.float64),
+}
+label, probs = sess.run(None, feeds)
+print("ONNX Runtime:", label[0], probs)
 ```
 
 ---
 
-## GitHub Actions Repository Secrets
-
-Configure the following secrets in Settings > Secrets and variables > Actions:
-
-| Secret Name | Description |
-| :--- | :--- |
-| `HF` | Hugging Face Access Token with Write permission |
-| `USER_NAME` | Git commit username for automated update branch pushes |
-| `USER_EMAIL` | Git commit email for automated update branch pushes |
-| `GITHUB_TOKEN` | Inherent token (grant Read and write permissions under Settings > Actions > General) |
+## Disclaimer
+This project is an educational demonstration of MLOps CI/CD and in-browser ONNX inference. It is not intended for clinical diagnostic use or prescribing medication.

@@ -1,71 +1,86 @@
-import os
-import pandas as pd
+from pathlib import Path
+import joblib
 import matplotlib.pyplot as plt
-import skops.io as sio
-from sklearn.model_selection import train_test_split
+import pandas as pd
+from skl2onnx import to_onnx
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.impute import SimpleImputer
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OrdinalEncoder, StandardScaler
 from sklearn.metrics import (
     accuracy_score,
-    f1_score,
-    confusion_matrix,
+    classification_report,
     ConfusionMatrixDisplay,
+    f1_score,
 )
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder
 
-# Ensure output directories exist
-os.makedirs("results", exist_ok=True)
-os.makedirs("model", exist_ok=True)
-
-# Load and shuffle dataset
-drug_df = pd.read_csv("data/drug.csv")
-drug_df = drug_df.sample(frac=1)
-
-# Train-test split
-X = drug_df.drop("Drug", axis=1).values
-y = drug_df["Drug"].values
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.3, random_state=125
+DATA = (
+    Path("data/drug200.csv")
+    if Path("data/drug200.csv").exists()
+    else Path("data/drug.csv")
 )
+MODEL_DIR = Path("model")
+RESULTS_DIR = Path("results")
+MODEL_DIR.mkdir(exist_ok=True)
+RESULTS_DIR.mkdir(exist_ok=True)
 
-# Define preprocessing and model pipeline
-cat_col = [1, 2, 3]
-num_col = [0, 4]
-transform = ColumnTransformer(
+df = pd.read_csv(DATA)
+X = df.drop(columns=["Drug"])
+y = df["Drug"]
+
+categorical = ["Sex", "BP", "Cholesterol"]
+numerical = ["Age", "Na_to_K"]
+
+preprocessor = ColumnTransformer(
     [
-        ("encoder", OrdinalEncoder(), cat_col),
-        ("num_imputer", SimpleImputer(strategy="median"), num_col),
-        ("num_scaler", StandardScaler(), num_col),
-    ]
-)
-pipe = Pipeline(
-    steps=[
-        ("preprocessing", transform),
-        ("model", RandomForestClassifier(n_estimators=100, random_state=125)),
+        ("categorical", OneHotEncoder(handle_unknown="ignore"), categorical),
+        ("numerical", "passthrough", numerical),
     ]
 )
 
-# Train the model
-pipe.fit(X_train, y_train)
+pipeline = Pipeline(
+    [
+        ("preprocessor", preprocessor),
+        ("classifier", RandomForestClassifier(n_estimators=100, random_state=42)),
+    ]
+)
 
-# Make predictions and evaluate
-predictions = pipe.predict(X_test)
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
+
+pipeline.fit(X_train, y_train)
+predictions = pipeline.predict(X_test)
 accuracy = accuracy_score(y_test, predictions)
-f1 = f1_score(y_test, predictions, average="macro")
+f1 = f1_score(y_test, predictions, average="weighted")
 
-print("Accuracy:", str(round(accuracy * 100, 2)) + "%", "F1 Score:", round(f1, 2))
+joblib.dump(pipeline, MODEL_DIR / "drug_model.joblib")
 
-# Save metrics
-with open("results/metrics.txt", "w") as outfile:
-    outfile.write(f"Accuracy = {round(accuracy, 2)}, F1 Score = {round(f1, 2)}")
+with open(RESULTS_DIR / "metrics.txt", "w") as f:
+    f.write(f"Accuracy: {accuracy:.4f}\n")
+    f.write(f"Weighted F1-score: {f1:.4f}\n")
+    f.write("\n")
+    f.write(classification_report(y_test, predictions))
 
-# Save confusion matrix
-cm = confusion_matrix(y_test, predictions, labels=pipe.classes_)
-disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=pipe.classes_)
-disp.plot()
-plt.savefig("results/model_results.png", dpi=120)
+ConfusionMatrixDisplay.from_predictions(y_test, predictions, xticks_rotation="vertical")
+plt.tight_layout()
+plt.savefig(RESULTS_DIR / "confusion_matrix.png")
+plt.savefig(RESULTS_DIR / "model_results.png")
+plt.close()
 
-# Save model
-sio.dump(pipe, "model/drug_pipeline.skops")
+# Export fitted pipeline to ONNX format
+sample = X_train.iloc[:1]
+onnx_model = to_onnx(
+    pipeline,
+    sample,
+    target_opset=17,
+    options={id(pipeline): {"zipmap": False}},
+)
+with open(MODEL_DIR / "drug_model.onnx", "wb") as f:
+    f.write(onnx_model.SerializeToString())
+
+print(f"Accuracy: {accuracy:.4f}")
+print(f"Weighted F1-score: {f1:.4f}")
+print("ONNX model exported successfully.")
+print("Training and evaluation completed.")

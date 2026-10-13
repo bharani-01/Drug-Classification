@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drug Classification</title>
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: #f0f4f8;
+            color: #1e293b;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 16px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 24px;
+            max-width: 560px;
+        }
+
+        h1 {
+            color: #1e3a5f;
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        .description {
+            color: #334155;
+            font-size: 14px;
+            margin-bottom: 12px;
+            line-height: 1.4;
+        }
+
+        #model-status {
+            color: #334155;
+            font-size: 14px;
+        }
+
+        .card {
+            background: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            width: 100%;
+            max-width: 490px;
+            padding: 32px 28px;
+        }
+
+        .form-group {
+            margin-bottom: 18px;
+        }
+
+        label {
+            display: block;
+            font-size: 14px;
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 8px;
+        }
+
+        input[type="number"],
+        input[type="text"],
+        select {
+            width: 100%;
+            height: 38px;
+            padding: 6px 12px;
+            font-size: 14px;
+            color: #1e293b;
+            background-color: #ffffff;
+            border: 1px solid #64748b;
+            border-radius: 4px;
+            outline: none;
+            transition: border-color 0.15s ease;
+        }
+
+        input[type="number"]:focus,
+        input[type="text"]:focus,
+        select:focus {
+            border-color: #1e5bb8;
+        }
+
+        #submit-btn {
+            width: 100%;
+            height: 42px;
+            background-color: #205493;
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            margin-top: 6px;
+            margin-bottom: 20px;
+            transition: background-color 0.2s ease;
+        }
+
+        #submit-btn:hover:not(:disabled) {
+            background-color: #1a4477;
+        }
+
+        #submit-btn:disabled {
+            background-color: #94a3b8;
+            cursor: not-allowed;
+        }
+
+        #result {
+            background-color: #edf4fe;
+            border-radius: 6px;
+            padding: 16px 20px;
+            font-size: 14px;
+            line-height: 1.6;
+            color: #1e293b;
+        }
+
+        #result div {
+            margin-bottom: 2px;
+        }
+
+        .footer-text {
+            margin-top: 24px;
+            font-size: 12px;
+            color: #475569;
+            text-align: center;
+            max-width: 520px;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Drug Classification</h1>
+        <p class="description">Enter the patient features to predict the drug class using the trained ML model.</p>
+        <p id="model-status">Loading model...</p>
+    </div>
+
+    <div class="card">
+        <form id="predict-form">
+            <div class="form-group">
+                <label for="age">Age</label>
+                <input type="number" id="age" value="30" required>
+            </div>
+
+            <div class="form-group">
+                <label for="sex">Sex</label>
+                <select id="sex" required>
+                    <option value="F" selected>F</option>
+                    <option value="M">M</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="bp">Blood Pressure (BP)</label>
+                <select id="bp" required>
+                    <option value="HIGH">HIGH</option>
+                    <option value="NORMAL" selected>NORMAL</option>
+                    <option value="LOW">LOW</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="cholesterol">Cholesterol</label>
+                <select id="cholesterol" required>
+                    <option value="HIGH">HIGH</option>
+                    <option value="NORMAL" selected>NORMAL</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="na_to_k">Na_to_K</label>
+                <input type="number" step="any" id="na_to_k" value="15.0" required>
+            </div>
+
+            <button type="submit" id="submit-btn" disabled>Predict</button>
+
+            <div id="result">
+                <div>Predicted Class: <strong id="predicted-class">-</strong></div>
+                <div>Model Confidence: <strong id="confidence">-</strong></div>
+            </div>
+        </form>
+    </div>
+
+    <p class="footer-text">Educational demonstration only. This model must not be used to select or prescribe medication.</p>
+
+    <script>
+        let session = null;
+
+        async function loadModel() {
+            const statusEl = document.getElementById("model-status");
+            const submitBtn = document.getElementById("submit-btn");
+
+            // Candidate URLs to resolve model on HF static space root or local testing
+            const candidateUrls = [
+                "model/drug_model.onnx",
+                "../model/drug_model.onnx",
+                "./model/drug_model.onnx"
+            ];
+
+            let loaded = false;
+            for (const url of candidateUrls) {
+                try {
+                    session = await ort.InferenceSession.create(url);
+                    loaded = true;
+                    console.log("ONNX model loaded successfully from", url);
+                    break;
+                } catch (e) {
+                    console.warn("Failed loading from", url, e);
+                }
+            }
+
+            if (loaded && session) {
+                statusEl.textContent = "Model loaded.";
+                submitBtn.disabled = false;
+            } else {
+                statusEl.textContent = "Failed to load model.";
+            }
+        }
+
+        async function predict(event) {
+            event.preventDefault();
+            if (!session) return;
+
+            const age = Number(document.getElementById("age").value);
+            const sex = document.getElementById("sex").value;
+            const bp = document.getElementById("bp").value;
+            const cholesterol = document.getElementById("cholesterol").value;
+            const naToK = Number(document.getElementById("na_to_k").value);
+
+            const feeds = {
+                Age: new ort.Tensor("int64", BigInt64Array.from([BigInt(Math.round(age))]), [1, 1]),
+                Sex: new ort.Tensor("string", [sex], [1, 1]),
+                BP: new ort.Tensor("string", [bp], [1, 1]),
+                Cholesterol: new ort.Tensor("string", [cholesterol], [1, 1]),
+                Na_to_K: new ort.Tensor("float64", Float64Array.from([naToK]), [1, 1]),
+            };
+
+            try {
+                const output = await session.run(feeds);
+                const label = output.label.data[0];
+                const maxProb = Math.max(...output.probabilities.data);
+
+                document.getElementById("predicted-class").textContent = label;
+                document.getElementById("confidence").textContent = (maxProb * 100).toFixed(2) + "%";
+            } catch (err) {
+                console.error("Inference failed:", err);
+                alert("Prediction error: " + err.message);
+            }
+        }
+
+        document.getElementById("predict-form").addEventListener("submit", predict);
+        loadModel();
+    </script>
+</body>
+</html>

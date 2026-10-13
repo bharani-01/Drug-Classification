@@ -1,12 +1,16 @@
 ---
-title: Drug Classification
-colorFrom: pink
-colorTo: red
-sdk: gradio
-sdk_version: 5.23.3
-app_file: app.py
+title: Drug Classification - ML CI/CD
+colorFrom: blue
+colorTo: green
+sdk: static
 pinned: false
-license: apache-2.0
 ---
 
-Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
+# Drug Classification - ONNX Runtime Web Interface
+
+This is an in-browser machine learning inference application for clinical drug classification.
+
+- **Architecture:** Zero-server, client-side inference powered by [ONNX Runtime Web](https://onnxruntime.ai/) and WebAssembly.
+- **Model:** Scikit-Learn Pipeline (`OneHotEncoder` + `RandomForestClassifier`), converted to ONNX via `skl2onnx`.
+- **Hosting:** Hugging Face Static Space (fast, free, static asset serving).
+- **Automation:** GitHub Actions continuous integration and continuous deployment (CI/CD) with automated model evaluation using Continuous Machine Learning (CML).

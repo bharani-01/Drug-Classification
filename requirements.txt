@@ -1,6 +1,9 @@
 pandas
-scikit-learn
 numpy
+scikit-learn
 matplotlib
-skops
 black
+joblib
+skl2onnx
+onnx
+onnxruntime

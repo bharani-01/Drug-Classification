@@ -1,18 +1,42 @@
-name: Continuous Deployment
+name: Manual Hugging Face Space Deployment
 
 on:
-  workflow_run:
-    workflows: ["Continuous Integration"]
-    types:
-      - completed
   workflow_dispatch:
+    inputs:
+      space_id:
+        description: "Hugging Face Space ID (e.g. bharani-01/Drug-Classification)"
+        required: false
+        default: "bharani-01/Drug-Classification"
+
+permissions:
+  contents: read
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - name: Deployment To Hugging Face
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Hugging Face Hub
+        run: python -m pip install --upgrade huggingface_hub
+
+      - name: Deploy to Hugging Face Static Space
         env:
-          HF: ${{ secrets.HF }}
-        run: make deploy HF=$HF
+          HF_TOKEN: ${{ secrets.HF_TOKEN || secrets.HF }}
+          TARGET_SPACE: ${{ github.event.inputs.space_id || secrets.HF_SPACE_ID || 'bharani-01/Drug-Classification' }}
+        run: |
+          TOKEN="${HF_TOKEN}"
+          if [ -z "$TOKEN" ]; then
+            echo "Error: HF_TOKEN secret is not set."
+            exit 1
+          fi
+          hf auth login --token "$TOKEN"
+          hf upload "$TARGET_SPACE" app/ . --repo-type space --commit-message "Manual deployment of app"
+          hf upload "$TARGET_SPACE" model/ model --repo-type space --commit-message "Manual deployment of model"
+          hf upload "$TARGET_SPACE" results/ results --repo-type space --commit-message "Manual deployment of results"
