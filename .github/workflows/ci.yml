@@ -58,19 +58,44 @@ jobs:
           HF_SPACE_ID: ${{ secrets.HF_SPACE_ID || 'bharani-01/Drug-Classification' }}
         run: |
           TOKEN="${HF_TOKEN}"
-          SPACE_ID="${HF_SPACE_ID}"
+          SPACE_ID="${HF_SPACE_ID:-bharani-01/Drug-Classification}"
           if [ -z "$TOKEN" ]; then
-            echo "Error: HF_TOKEN secret is not set. Please add HF_TOKEN or HF in repository secrets."
+            echo "Error: HF_TOKEN secret is not set in GitHub repository secrets."
+            echo "Please configure HF_TOKEN in GitHub -> Settings -> Secrets and variables -> Actions."
             exit 1
           fi
           python -m pip install --upgrade huggingface_hub
-          hf auth login --token "$TOKEN"
-          hf upload "$SPACE_ID" app/ . \
-            --repo-type space \
-            --commit-message "Deploy Gradio-Lite static application"
-          hf upload "$SPACE_ID" model/ model \
-            --repo-type space \
-            --commit-message "Upload trained model"
-          hf upload "$SPACE_ID" results/ results \
-            --repo-type space \
-            --commit-message "Upload evaluation results"
+          python - <<EOF
+          import os
+          from huggingface_hub import HfApi
+
+          token = os.environ.get("HF_TOKEN")
+          space_id = os.environ.get("HF_SPACE_ID", "bharani-01/Drug-Classification").strip()
+          print(f"Deploying to Hugging Face Space: {space_id}...")
+
+          api = HfApi(token=token)
+          print("Uploading web app files...")
+          api.upload_folder(
+              folder_path="app",
+              repo_id=space_id,
+              repo_type="space",
+              commit_message="Deploy static ONNX web application",
+          )
+          print("Uploading model artifacts...")
+          api.upload_folder(
+              folder_path="model",
+              path_in_repo="model",
+              repo_id=space_id,
+              repo_type="space",
+              commit_message="Upload trained model artifacts",
+          )
+          print("Uploading evaluation results...")
+          api.upload_folder(
+              folder_path="results",
+              path_in_repo="results",
+              repo_id=space_id,
+              repo_type="space",
+              commit_message="Upload evaluation metrics and plots",
+          )
+          print("Deployment to Hugging Face successfully completed!")
+          EOF
